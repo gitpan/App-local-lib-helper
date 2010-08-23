@@ -1,5 +1,5 @@
 ---
-abstract: 'Make it easy to run code against a L<local::lib>'
+abstract: 'Make it easy to run code against a local-lib'
 author:
   - 'John Napiorkowski C< <<jjnapiork@cpan.org>> >'
 build_requires:
@@ -28,4 +28,4 @@ requires:
 resources:
   license: http://dev.perl.org/licenses/
   repository: git://github.com/jjn1056/App--local--lib--helper.git
-version: 0.01
+version: 0.02

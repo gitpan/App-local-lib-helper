@@ -5,7 +5,7 @@ use warnings;
 use File::Spec;
 
 use 5.008008;
-our $VERSION = '0.01';
+our $VERSION = '0.02';
 
 sub run {
     my ($class, %opts) = @_;
@@ -41,6 +41,9 @@ sub create_local_lib_helper {
             map {split '=', $_} 
             grep { m/^INSTALL_BASE/ }
             split ' ', $ENV{PERL_MM_OPT};
+        $self->diag("My target local::lib is $target");
+        $self->_create_local_lib_helper_bashrc($target);
+        $self->_create_local_lib_helper_cshrc($target);
         return $self->_create_local_lib_helper($target);
     }
     
@@ -67,7 +70,6 @@ sub has_local_lib_env {
 
 sub _create_local_lib_helper {
     my ($self, $target) = @_;
-    $self->diag("My target local::lib is $target");
     my $lib = File::Spec->catdir($target, 'lib', 'perl5');
     my $bin = File::Spec->catdir($target, 'bin');
     unless(-e $bin) {
@@ -100,11 +102,51 @@ END
     return $bin;
 }
 
+sub _create_local_lib_helper_bashrc {
+    my ($self, $target) = @_;
+    my $lib = File::Spec->catdir($target, 'lib', 'perl5');
+    my $bin = File::Spec->catdir($target, 'bin');
+    unless(-e $bin) {
+        mkdir $bin;
+    }
+    $bin = File::Spec->catdir($bin, $self->{helper_name}.'-bashrc');
+    open(my $bin_fh, '>', $bin)
+      or $self->error("Can't open $bin", $!);
+
+    print $bin_fh <<"END";
+eval \$($self->{which_perl} -I$lib -Mlocal::lib=$target)
+END
+
+    close($bin_fh);
+    chmod oct($self->{helper_permissions}), $bin;
+    return $bin;
+}
+
+sub _create_local_lib_helper_cshrc {
+    my ($self, $target) = @_;
+    my $lib = File::Spec->catdir($target, 'lib', 'perl5');
+    my $bin = File::Spec->catdir($target, 'bin');
+    unless(-e $bin) {
+        mkdir $bin;
+    }
+    $bin = File::Spec->catdir($bin, $self->{helper_name}.'-cshrc');
+    open(my $bin_fh, '>', $bin)
+      or $self->error("Can't open $bin", $!);
+
+    print $bin_fh <<"END";
+$self->{which_perl} -I$lib -Mlocal::lib=$target
+END
+
+    close($bin_fh);
+    chmod oct($self->{helper_permissions}), $bin;
+    return $bin;
+}
+
 1;
 
 =head1 NAME
 
-App::local::lib::helper - Make it easy to run code against a L<local::lib>
+App::local::lib::helper - Make it easy to run code against a local-lib
 
 =head1 SYNOPSIS
 
@@ -169,6 +211,26 @@ one root directory all under regular user privileges.
 L<local::lib> does all the real work, but I find this to be the easiest way to
 run given code against a L<local::lib> root.  
 
+=head2 Additional Helpers
+
+In addition to the C<localenv> script which is documented above, we also create
+two snippets of code suitable for including in your C<.bashrc> or C<.cshrc>.
+These are created to help people that only want or need a single local-lib and
+would like to activate it at login.  If you'd like to use these, simple add the
+following tot he end of your C<.bashrc>
+
+    source $TARGET/bin/localenv-bashrc
+
+Where $TARGET is the root of your local-lib (the directory that contains you
+bin and lib directories).
+
+Next time you log in, you can do C<perl -V> and should see that your local-lib
+has automatically been activated.
+
+There will also be a C<source $TARGET/bin/localenv-cshrc> created for those of
+you using csh.  Currently this is not going to work with Windows shell users,
+but should be easy to setup, collaborations very welcomed.
+
 =head1 OPTIONS
 
 This class supports the following options.
@@ -198,6 +260,26 @@ These are the permissions the the helper utility script is set to.  By default
 we set the equivilent of 'chmod 755 [HELPER SCRIPT]'
 
 =back
+
+=head1 HELPERS
+
+This distribution installs the following L<local::lib> helpers
+
+=head2 localenv
+
+This is a perl script that runs a single command in L<local::lib> aware context.
+You can use the C<helper-name> option to set a different name.
+
+=head2 localenv-bashrc
+
+a snippet suitable for sourcing in your .bashrc, which will automatically
+activate a local-lib at login.  Name will follow from C<helper-name>.
+
+=head2 localenv-cshrc
+
+a snippet suitable for sourcing in your .cshrc, which will automatically
+activate a local-lib at login.  Name will follow from C<helper-name>.
+
 
 =head1 AUTHOR
 
