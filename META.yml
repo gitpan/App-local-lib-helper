@@ -26,6 +26,7 @@ requires:
   local::lib: 0
   perl: 5.8.8
 resources:
+  homepage: http://search.cpan.org/dist/App-local-lib-helper/
   license: http://dev.perl.org/licenses/
   repository: git://github.com/jjn1056/App--local--lib--helper.git
-version: 0.02
+version: 0.03
