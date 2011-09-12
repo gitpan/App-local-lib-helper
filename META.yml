@@ -3,14 +3,13 @@ abstract: 'Make it easy to run code against a local-lib'
 author:
   - 'John Napiorkowski C< <<jjnapiork@cpan.org>> >'
 build_requires:
-  Config: 0
   ExtUtils::MakeMaker: 6.42
-  Getopt::Long: 0
+  File::Spec: 0
   Test::More: 0.94
 configure_requires:
   ExtUtils::MakeMaker: 6.42
 distribution_type: module
-generated_by: 'Module::Install version 1.00'
+generated_by: 'Module::Install version 1.01'
 license: perl
 meta-spec:
   url: http://module-build.sourceforge.net/META-spec-v1.4.html
@@ -22,11 +21,14 @@ no_index:
     - inc
     - t
 requires:
+  Config: 0
   File::Spec: 0
+  FindBin: 0
+  Getopt::Long: 0
   local::lib: 0
   perl: 5.8.5
 resources:
   homepage: http://search.cpan.org/dist/App-local-lib-helper/
   license: http://dev.perl.org/licenses/
   repository: git://github.com/jjn1056/App--local--lib--helper.git
-version: 0.04
+version: 0.05

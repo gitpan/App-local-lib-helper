@@ -5,7 +5,7 @@ use warnings;
 use File::Spec;
 
 use 5.008005;
-our $VERSION = '0.04';
+our $VERSION = '0.05';
 
 sub run {
     my ($class, %opts) = @_;
@@ -44,7 +44,9 @@ sub create_local_lib_helper {
         $self->diag("My target local::lib is $target");
         $self->_create_local_lib_helper_bashrc($target);
         $self->_create_local_lib_helper_cshrc($target);
-        return $self->_create_local_lib_helper($target);
+        $self->_create_local_lib_helper_relative($target);
+        $self->_create_local_lib_helper($target);
+        return 1;
     }
     
     $self->diag(<<DIAG);
@@ -57,7 +59,6 @@ DIAG
 }
 
 sub has_local_lib_env {
-    my $self = shift @_;
     if(
         $ENV{PERL_MM_OPT} and 
         ($ENV{MODULEBUILDRC} or $ENV{PERL_MB_OPT})
@@ -68,18 +69,31 @@ sub has_local_lib_env {
     }
 }
 
-sub _create_local_lib_helper {
+sub _create_file {
+    my ($self, $filename, $permissions, $text) = @_;
+    open (my $fh, '>', $filename)
+      || $self->error("Can't open $filename", $!);
+
+    print $fh $text;
+
+    close($fh);
+    chmod oct($permissions), $filename;
+    return $filename;
+}
+
+sub _find_or_create_lib_bindir_from {
     my ($self, $target) = @_;
     my $lib = File::Spec->catdir($target, 'lib', 'perl5');
-    my $bin = File::Spec->catdir($target, 'bin');
-    unless(-e $bin) {
-        mkdir $bin;
-    }
-    $bin = File::Spec->catdir($bin, $self->{helper_name});
-    open(my $bin_fh, '>', $bin)
-      or $self->error("Can't open $bin", $!);
+    my $bindir = File::Spec->catdir($target, 'bin');
+    mkdir $bindir unless(-e $bindir);
+    return ($lib, $bindir);
+}
 
-    print $bin_fh <<"END";
+sub _create_local_lib_helper {
+    my ($self, $target) = @_;
+    my ($lib, $bindir) = $self->_find_or_create_lib_bindir_from($target);
+    my $bin = File::Spec->catdir($bindir, $self->{helper_name});
+    $self->_create_file($bin, $self->{helper_permissions}, <<END);
 #!$self->{which_perl}
 
 use strict;
@@ -93,53 +107,52 @@ unless ( caller ) {
         exec \@ARGV;
     }
 }
-
-1;
 END
 
-    close($bin_fh);
-    chmod oct($self->{helper_permissions}), $bin;
-    return $bin;
+}
+
+sub _create_local_lib_helper_relative {
+    my ($self, $target) = @_;
+    my ($lib, $bindir) = $self->_find_or_create_lib_bindir_from($target);
+    my $bin = File::Spec->catdir($bindir, $self->{helper_name}.'-relative');
+    $self->_create_file($bin, $self->{helper_permissions}, <<END);
+#!/usr/bin/env perl
+
+use strict;
+use warnings;
+
+use FindBin;
+use File::Spec;
+use lib File::Spec->catdir(\$FindBin::Bin, '..', 'lib', 'perl5');
+use local::lib File::Spec->catdir(\$FindBin::Bin, '..');
+
+unless ( caller ) {
+    if ( \@ARGV ) {
+        exec \@ARGV;
+    }
+}
+END
+
 }
 
 sub _create_local_lib_helper_bashrc {
     my ($self, $target) = @_;
-    my $lib = File::Spec->catdir($target, 'lib', 'perl5');
-    my $bin = File::Spec->catdir($target, 'bin');
-    unless(-e $bin) {
-        mkdir $bin;
-    }
-    $bin = File::Spec->catdir($bin, $self->{helper_name}.'-bashrc');
-    open(my $bin_fh, '>', $bin)
-      or $self->error("Can't open $bin", $!);
-
-    print $bin_fh <<"END";
+    my ($lib, $bindir) = $self->_find_or_create_lib_bindir_from($target);
+    my $bin = File::Spec->catdir($bindir, $self->{helper_name}.'-bashrc');
+    $self->_create_file($bin, $self->{helper_permissions}, <<END);
 eval \$($self->{which_perl} -I$lib -Mlocal::lib=$target)
 END
 
-    close($bin_fh);
-    chmod oct($self->{helper_permissions}), $bin;
-    return $bin;
 }
 
 sub _create_local_lib_helper_cshrc {
     my ($self, $target) = @_;
-    my $lib = File::Spec->catdir($target, 'lib', 'perl5');
-    my $bin = File::Spec->catdir($target, 'bin');
-    unless(-e $bin) {
-        mkdir $bin;
-    }
-    $bin = File::Spec->catdir($bin, $self->{helper_name}.'-cshrc');
-    open(my $bin_fh, '>', $bin)
-      or $self->error("Can't open $bin", $!);
-
-    print $bin_fh <<"END";
+    my ($lib, $bindir) = $self->_find_or_create_lib_bindir_from($target);
+    my $bin = File::Spec->catdir($bindir, $self->{helper_name}.'-cshrc');
+    $self->_create_file($bin, $self->{helper_permissions}, <<END);
 $self->{which_perl} -I$lib -Mlocal::lib=$target
 END
 
-    close($bin_fh);
-    chmod oct($self->{helper_permissions}), $bin;
-    return $bin;
 }
 
 1;
@@ -188,7 +201,7 @@ C<~/mylib>, you can do so like:
 
     ~/mylib/bin/localenv perl [SOME COMMAND]
 
-The command C<localenv> will make sure the same L<local:lib> that was active
+The command C<localenv> will make sure the same L<local::lib> that was active
 when L<App::local::lib::helper> was originally installed is again installed
 into the environment before executing the commands passed in C<@ARGV>.  Upon
 completing the command, the C<%ENV> is restored so that you can use this to fire
@@ -288,6 +301,77 @@ commands like:
     ~/mylocallib/bin/localenv bash
     ~/mylocallib/bin/localenv screen
 
+Or I can use it to run a single command wrapped in the L<local::lib> target
+and exit cleanly:
+
+    ~/mylocallib/bin/localenv perl app.pl
+    ~/mylocallib/bin/localenv plackup app.psgi
+
+=head2 localenv-relative
+
+NOTE: Experimental feature.  Please prefer using L</localenv> unless you 
+absolutely need this functionality.
+
+This perl script functions (or should function) identically to L<localenv> as
+documented.  However, instead of having hardcoded full paths to your Perl
+binary and L<local::lib> target directories, we instead try to use relative
+pathing.  For example, here is the helper script built on my server for the
+standard L</localenv> script:
+
+    #!/Users/johnn/perl5/perlbrew/perls/perl-5.14.1/bin/perl
+
+    use strict;
+    use warnings;
+
+    use lib '/Users/johnn/locallib_5_14_1/lib/perl5';
+    use local::lib '/Users/johnn/locallib_5_14_1';
+
+    unless ( caller ) {
+        if ( @ARGV ) {
+            exec @ARGV;
+        }
+    }
+
+And here is the example same version for the relative script:
+
+    #!/usr/bin/env perl
+
+    use strict;
+    use warnings;
+
+    use FindBin;
+    use File::Spec;
+    use lib File::Spec->catdir($FindBin::Bin, '..', 'lib', 'perl5');
+    use local::lib File::Spec->catdir($FindBin::Bin, '..');
+
+    unless ( caller ) {
+        if ( @ARGV ) {
+            exec @ARGV;
+        }
+    }
+
+The goal here is to be more friendly when you need to relocate your
+installation of Perl and/or your L<local::lib> target directory.  You might
+wish to try this if you are copying a 'seed' Perl and L<local::lib> setup to
+multiple developer home directories (as a way to speed up first time developer
+setup, for example) or if your deployment system copies your application from
+your build enviroment to a QA or Production that is not identical.
+
+Personally I prefer to build Perl and my application in each location that is
+different, since I find that works very effectively.  However I understand some
+shops have existing build systems that deploy code by copying Perl dependencies
+from box to box, and these boxes are not always identical in directory layout.
+For example, there might be a build or integration point in development, with
+a L<local::lib> target of C</home/integration/webapp-cpan-locallib> and you
+wish to copy that directory recursively to your qa/production server, which 
+might be located at C</home/qa/local-lib>.
+
+I'd like to accomodate this approach as best I can, however I can't be certain
+that moving Perl and L<local::lib> around rather than performing a true install
+is going to work consistently. Caveat emptor!
+
+Please also note that the following shell snippets are not relative tested.
+
 =head2 localenv-bashrc
 
 a snippet suitable for sourcing in your .bashrc, which will automatically
@@ -313,7 +397,7 @@ John Napiorkowski C< <<jjnapiork@cpan.org>> >
 
 =head1 COPYRIGHT & LICENSE
 
-Copyright 2010, John Napiorkowski
+Copyright 2011, John Napiorkowski
 
 This program is free software; you can redistribute it and/or modify it under
 the same terms as Perl itself.
